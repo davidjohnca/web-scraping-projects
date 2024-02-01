@@ -21,7 +21,7 @@ for page in range(1, 11):
     for quote in quotes:
         text = quote.find_element(By.XPATH('.//span[@class="text"]'))
         author = quote.find_element(By.XPATH('.//small[@class="author"]'))
-        tags = [tag for tag in quote.find_elements(By.XPATH('.//a[@class="tag"]'))]
+        tags = [tag.text for tag in quote.find_elements(By.XPATH('.//a[@class="tag"]'))]
         print({'text': text.text, 'author': author.text, 'tags': tags})
         scraped_quotes.append({'text': text.text, 'author': author.text, 'tags': tags})
     
