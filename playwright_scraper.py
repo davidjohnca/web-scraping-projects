@@ -1,5 +1,6 @@
 import pandas as pd
 from playwright.sync_api import sync_playwright
+from time import sleep
 
 
 scraped_quotes = []
@@ -9,7 +10,9 @@ for next_page in range(1, 11):
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True, timeout=30000)
         context = browser.new_context()
-        page = context.new_page()
+        page = context.new_page(
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+        )
         page.goto(f'https://quotes.toscrape.com/page/{next_page}/')
         quotes = page.query_selector_all('div.quote')
 
@@ -22,6 +25,8 @@ for next_page in range(1, 11):
         
         context.close()
         browser.close()
+
+    sleep(2)
 
 df = pd.DataFrame(scraped_quotes)
 df.to_csv('scraped_quotes.csv')
