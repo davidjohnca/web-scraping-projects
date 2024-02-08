@@ -3,11 +3,13 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
+from time import sleep
 from webdriver_manager.chrome import ChromeDriverManager
 
 
 options = Options()
 options.add_argument('--headless')
+options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36')
 #options.add_experimental_option('detach', True)
 service = Service(ChromeDriverManager().install())
 driver = webdriver.Chrome(options=options, service=service)
@@ -26,6 +28,7 @@ for page in range(1, 11):
         scraped_quotes.append({'text': text.text, 'author': author.text, 'tags': tags})
     
     driver.quit()
+    sleep(2)
 
 df = pd.DataFrame(scraped_quotes)
 df.to_csv('scraped_quotes.csv')
