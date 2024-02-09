@@ -8,11 +8,11 @@ scraped_quotes = []
 for next_page in range(1, 11):
     
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True, timeout=30000)
-        context = browser.new_context()
-        page = context.new_page(
+        browser = pw.chromium.launch(headless=False, timeout=30000)
+        context = browser.new_context(
             user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
         )
+        page = context.new_page()
         page.goto(f'https://quotes.toscrape.com/page/{next_page}/')
         quotes = page.query_selector_all('div.quote')
 
