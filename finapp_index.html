@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Family Budget PWA</title>
+
+  <!-- iOS PWA Meta Tags -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Family Budget" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0f172a" />
+
+  <!-- App Icon Data URI -->
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%2310b981'/><text x='50%' y='65%' font-size='60' font-weight='bold' text-anchor='middle' fill='white'>£</text></svg>" />
+
+  <!-- Web App Manifest via Data URI -->
+  <link rel="manifest" href="data:application/manifest+json;utf8,{
+    %22short_name%22:%22FamilyBudget%22,
+    %22name%22:%22Family%20Budget%20%26%20Finance%20Tracker%22,
+    %22icons%22:[{%22src%22:%22data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%2310b981'/><text x='50%' y='65%' font-size='60' font-weight='bold' text-anchor='middle' fill='white'>£</text></svg>%22,%22sizes%22:%22192x192%22,%22type%22:%22image/svg+xml%22}],
+    %22start_url%22:%22.%22,
+    %22background_color%22:%22%230f172a%22,
+    %22theme_color%22:%22%230f172a%22,
+    %22display%22:%22standalone%22,
+    %22orientation%22:%22portrait%22
+  }" />
+
+  <!-- Tailwind CSS & React CDN Scripts -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50: '#ecfdf5', 500: '#10b981', 600: '#059669', 900: '#064e3b' }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Dependencies: React, ReactDOM, Babel, Recharts, Lucide Icons -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/prop-types/prop-types.min.js"></script>
+  <script src="https://unpkg.com/recharts@2.10.3/dist/Recharts.js"></script>
+  <script src="https://unpkg.com/lucide-react@0.263.1/dist/umd/lucide-react.min.js"></script>
+
+  <style>
+    /* Safe area padding for iPhone notch / home indicator bar */
+    body {
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans antialiased">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+    const {
+      BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell
+    } = Recharts;
+
+    // Lucide icons extraction
+    const {
+      Wallet, CreditCard, BarChart3, Layers, PiggyBank, Briefcase, Settings, Plus,
+      Trash2, CheckCircle2, Clock, AlertCircle, Calendar, Download, FileSpreadsheet,
+      X, Sun, Moon, Scale, Sparkles, Filter, Search, UserCheck, ArrowUpRight, ArrowDownRight
+    } = lucideReact;
+
+    // Constants & Default Data (populated directly from notebook sources)
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const AVAILABLE_PAYERS = ['All', 'David', 'May', 'Daniel', 'Mum', 'Noel', 'Me', 'Both'];
+
+    // Monthly expenses from notebook sources (Total = £2,328.48)
+    const NOTEBOOK_MONTHLY_EXPENSES = [
+      { id: 'm-1', category: 'Housing', description: 'Rent', budget: 1299.00, deductedFrom: 'All', dueDay: 1 },
+      { id: 'm-2', category: 'Housing', description: 'Council Tax', budget: 123.00, deductedFrom: 'All', dueDay: 1 },
+      { id: 'm-3', category: 'Utilities', description: 'Thames Water', budget: 35.00, deductedFrom: 'May', dueDay: 1 },
+      { id: 'm-4', category: 'Subscriptions', description: 'TV License', budget: 14.00, deductedFrom: 'David', dueDay: 1 },
+      { id: 'm-5', category: 'Transport', description: 'Car Insurance', budget: 61.50, deductedFrom: 'David', dueDay: 1 },
+      { id: 'm-6', category: 'Subscriptions', description: 'Netflix', budget: 7.00, deductedFrom: 'David', dueDay: 1 },
+      { id: 'm-7', category: 'Health', description: 'Third Space', budget: 20.00, deductedFrom: 'David', dueDay: 5 },
+      { id: 'm-8', category: 'Subscriptions', description: 'Google One Cloud', budget: 7.99, deductedFrom: 'David', dueDay: 5 },
+      { id: 'm-9', category: 'Giving', description: 'Palwagan', budget: 200.00, deductedFrom: 'David', dueDay: 10 },
+      { id: 'm-10', category: 'Utilities', description: 'Virgin Media Broadband', budget: 56.00, deductedFrom: 'Daniel', dueDay: 12 },
+      { id: 'm-11', category: 'Utilities', description: 'Gas & Electricity', budget: 100.00, deductedFrom: 'David', dueDay: 15 },
+      { id: 'm-12', category: 'Food', description: 'Groceries & Household', budget: 300.00, deductedFrom: 'May', dueDay: 15 },
+      { id: 'm-13', category: 'Utilities', description: 'Vodafone Mobile', budget: 74.00, deductedFrom: 'David', dueDay: 20 },
+      { id: 'm-14', category: 'Subscriptions', description: 'Amazon Prime', budget: 7.99, deductedFrom: 'David', dueDay: 22 },
+      { id: 'm-15', category: 'Subscriptions', description: 'Apple Subscriptions', budget: 23.00, deductedFrom: 'David', dueDay: 27 }
+    ];
+
+    // Debts & Repayments from notebook sources
+    const NOTEBOOK_DEBTS = [
+      { id: 'd-1', recipient: 'Monteflor', totalAmount: 1500.00, paidAmount: 0.00, comments: '1st month rent/deposit' },
+      { id: 'd-2', recipient: 'Tita Norie', totalAmount: 604.52, paidAmount: 604.52, comments: '700 EUR 1st month rent/deposit (Paid)' },
+      { id: 'd-3', recipient: 'Clarence', totalAmount: 2400.00, paidAmount: 1600.00, comments: '£800 balance remaining' },
+      { id: 'd-4', recipient: 'Rent + Deposit Hold', totalAmount: 498.00, paidAmount: 498.00, comments: '1st month rent + deposit hold' },
+      { id: 'd-5', recipient: 'Viewing Block Cash', totalAmount: 250.00, paidAmount: 250.00, comments: 'Cash payment to block viewings' },
+      { id: 'd-6', recipient: '2nd Month Rent + Council', totalAmount: 1482.00, paidAmount: 1482.00, comments: '2nd month rent + council tax' },
+      { id: 'd-7', recipient: '2nd Month Groceries', totalAmount: 170.00, paidAmount: 170.00, comments: 'Groceries buffer for 2nd month' }
+    ];
+
+    // Savings Pots
+    const DEFAULT_POTS = [
+      { id: 'p-1', name: 'Emergency Cash ISA', icon: '🏦', balance: 3500.00, target: 6000.00, note: '3-6 months living costs' },
+      { id: 'p-2', name: 'Car Yearly Reserve 🚗', icon: '🚗', balance: 835.00, target: 1050.00, note: 'Parking permit (£150), Road Tax (£365), MOT (£220)' },
+      { id: 'p-3', name: 'Holiday & Travel ✈️', icon: '✈️', balance: 1800.00, target: 3000.00, note: 'Vacation & Flights pot' },
+      { id: 'p-4', name: 'Celebrations & Gifts 🎁', icon: '🎁', balance: 400.00, target: 1000.00, note: 'Birthdays & Christmas' }
+    ];
+
+    const formatGBP = (val) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(Number(val) || 0);
+
+    const createInitialYearData = (yearNum) => {
+      const expensesMap = {};
+      MONTHS.forEach(m => {
+        expensesMap[m] = NOTEBOOK_MONTHLY_EXPENSES.map(item => ({
+          ...item,
+          id: `exp-${yearNum}-${m}-${Math.random().toString(36).substring(2, 7)}`,
+          actual: item.budget,
+          status: 'Scheduled'
+        }));
+      });
+      return {
+        fixedSalary: { hubby: 2310.35, wifey: 2441.44, other: 0.00 },
+        expensesByMonth: expensesMap,
+        sideHustles: []
+      };
+    };
+
+    function App() {
+      const [darkMode, setDarkMode] = useState(true);
+      const [activeTab, setActiveTab] = useState('dashboard');
+      const [availableYears, setAvailableYears] = useState([2024, 2025, 2026, 2027, 2028]);
+      const [selectedYear, setSelectedYear] = useState(2026);
+      const [selectedMonth, setSelectedMonth] = useState('Jan');
+
+      const [yearsData, setYearsData] = useState({});
+      const [pots, setPots] = useState(DEFAULT_POTS);
+      const [debts, setDebts] = useState(NOTEBOOK_DEBTS);
+      const [isLoaded, setIsLoaded] = useState(false);
+
+      // Filters
+      const [searchQuery, setSearchQuery] = useState('');
+      const [payerFilter, setPayerFilter] = useState('All');
+
+      // Modals
+      const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
+      const [isAddYearOpen, setIsAddYearOpen] = useState(false);
+      const [newYearInput, setNewYearInput] = useState('');
+      const [newExpense, setNewExpense] = useState({ description: '', category: 'Housing', budget: '', deductedFrom: 'David', dueDay: 1 });
+
+      // LocalStorage Load/Save
+      useEffect(() => {
+        try {
+          const saved = localStorage.getItem('family_budget_pwa_data_v1');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed.yearsData) setYearsData(parsed.yearsData);
+            if (parsed.availableYears) setAvailableYears(parsed.availableYears);
+            if (parsed.pots) setPots(parsed.pots);
+            if (parsed.debts) setDebts(parsed.debts);
+          } else {
+            const initialMap = {};
+            [2024, 2025, 2026, 2027, 2028].forEach(y => initialMap[y] = createInitialYearData(y));
+            setYearsData(initialMap);
+          }
+        } catch (e) {
+          console.error("Failed to load local state", e);
+        } finally {
+          setIsLoaded(true);
+        }
+      }, []);
+
+      useEffect(() => {
+        if (!isLoaded) return;
+        localStorage.setItem('family_budget_pwa_data_v1', JSON.stringify({
+          availableYears, selectedYear, yearsData, pots, debts
+        }));
+      }, [availableYears, selectedYear, yearsData, pots, debts, isLoaded]);
+
+      const currentYearObj = useMemo(() => yearsData[selectedYear] || createInitialYearData(selectedYear), [yearsData, selectedYear]);
+      const currentMonthExpenses = useMemo(() => currentYearObj.expensesByMonth?.[selectedMonth] || [], [currentYearObj, selectedMonth]);
+
+      // Summaries
+      const monthlySummaries = useMemo(() => {
+        const salary = (Number(currentYearObj.fixedSalary?.hubby) || 0) + (Number(currentYearObj.fixedSalary?.wifey) || 0);
+        return MONTHS.map(m => {
+          const list = currentYearObj.expensesByMonth?.[m] || [];
+          const totalBudget = list.reduce((a, b) => a + Number(b.budget || 0), 0);
+          const totalActual = list.reduce((a, b) => a + Number(b.actual || 0), 0);
+          return { month: m, salary, totalBudget, totalActual, surplus: salary - totalActual };
+        });
+      }, [currentYearObj]);
+
+      const activeMonthSummary = useMemo(() => {
+        return monthlySummaries.find(s => s.month === selectedMonth) || monthlySummaries[0];
+      }, [monthlySummaries, selectedMonth]);
+
+      const filteredExpenses = useMemo(() => {
+        return currentMonthExpenses.filter(e => {
+          const matchSearch = e.description.toLowerCase().includes(searchQuery.toLowerCase()) || e.category.toLowerCase().includes(searchQuery.toLowerCase());
+          const matchPayer = payerFilter === 'All' || e.deductedFrom === payerFilter;
+          return matchSearch && matchPayer;
+        });
+      }, [currentMonthExpenses, searchQuery, payerFilter]);
+
+      // Actions
+      const handleToggleStatus = (id) => {
+        const states = ['Scheduled', 'Paid', 'Pending'];
+        setYearsData(prev => {
+          const yr = prev[selectedYear] || createInitialYearData(selectedYear);
+          const updated = yr.expensesByMonth[selectedMonth].map(e => {
+            if (e.id === id) {
+              const nextIdx = (states.indexOf(e.status) + 1) % states.length;
+              return { ...e, status: states[nextIdx] };
+            }
+            return e;
+          });
+          return { ...prev, [selectedYear]: { ...yr, expensesByMonth: { ...yr.expensesByMonth, [selectedMonth]: updated } } };
+        });
+      };
+
+      const handleActualChange = (id, val) => {
+        setYearsData(prev => {
+          const yr = prev[selectedYear] || createInitialYearData(selectedYear);
+          const updated = yr.expensesByMonth[selectedMonth].map(e => e.id === id ? { ...e, actual: Number(val) || 0 } : e);
+          return { ...prev, [selectedYear]: { ...yr, expensesByMonth: { ...yr.expensesByMonth, [selectedMonth]: updated } } };
+        });
+      };
+
+      const handleAddYear = (e) => {
+        e.preventDefault();
+        const yNum = parseInt(newYearInput);
+        if (!yNum || availableYears.includes(yNum)) return;
+        setAvailableYears([...availableYears, yNum].sort((a,b) => a - b));
+        setYearsData(prev => ({ ...prev, [yNum]: createInitialYearData(yNum) }));
+        setSelectedYear(yNum);
+        setIsAddYearOpen(false);
+        setNewYearInput('');
+      };
+
+      const handleAddExpense = (e) => {
+        e.preventDefault();
+        if (!newExpense.description || !newExpense.budget) return;
+        const item = {
+          id: `exp-${selectedYear}-${selectedMonth}-${Date.now()}`,
+          description: newExpense.description,
+          category: newExpense.category,
+          budget: parseFloat(newExpense.budget) || 0,
+          actual: parseFloat(newExpense.budget) || 0,
+          deductedFrom: newExpense.deductedFrom,
+          dueDay: parseInt(newExpense.dueDay) || 1,
+          status: 'Scheduled'
+        };
+        setYearsData(prev => {
+          const yr = prev[selectedYear] || createInitialYearData(selectedYear);
+          const currentList = yr.expensesByMonth[selectedMonth] || [];
+          return {
+            ...prev,
+            [selectedYear]: {
+              ...yr,
+              expensesByMonth: { ...yr.expensesByMonth, [selectedMonth]: [...currentList, item] }
+            }
+          };
+        });
+        setIsAddExpenseOpen(false);
+        setNewExpense({ description: '', category: 'Housing', budget: '', deductedFrom: 'David', dueDay: 1 });
+      };
+
+      const handleExportCSV = () => {
+        let csv = "Year,Month,Category,Description,Payer,Budget,Actual,Status,DueDay\n";
+        availableYears.forEach(y => {
+          const yrObj = yearsData[y];
+          if (!yrObj) return;
+          MONTHS.forEach(m => {
+            (yrObj.expensesByMonth[m] || []).forEach(e => {
+              csv += `"${y}","${m}","${e.category}","${e.description}",${e.deductedFrom},${e.budget},${e.actual},"${e.status}",${e.dueDay}\n`;
+            });
+          });
+        });
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Family_Budget_${selectedYear}.csv`;
+        a.click();
+      };
+
+      return (
+        <div className={`min-h-screen pb-24 ${darkMode ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-100 text-slate-900'}`}>
+          
+          {/* Top Bar */}
+          <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-4 py-3 shadow-md">
+            <div className="max-w-3xl mx-auto flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center font-black text-white text-base">
+                  £
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <h1 className="font-extrabold text-sm text-white">Family Budget PWA</h1>
+                    <select
+                      value={selectedYear}
+                      onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                      className="bg-emerald-950 text-emerald-300 font-bold text-xs px-2 py-0.5 rounded border border-emerald-800"
+                    >
+                      {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  </div>
+                  <p className="text-[10px] text-slate-400">Offline Ready | Safari PWA</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button onClick={() => setIsAddYearOpen(true)} className="p-1.5 bg-slate-800 rounded-lg text-xs font-bold text-slate-300">
+                  + Year
+                </button>
+                <button onClick={handleExportCSV} className="p-1.5 bg-slate-800 rounded-lg text-xs font-bold text-emerald-400">
+                  CSV
+                </button>
+                <button onClick={() => setDarkMode(!darkMode)} className="p-1.5 bg-slate-800 rounded-lg text-xs text-amber-400">
+                  {darkMode ? '☀️' : '🌙'}
+                </button>
+              </div>
+            </div>
+          </header>
+
+          {/* Month Switcher Bar */}
+          <div className="bg-slate-900/80 border-b border-slate-800 px-2 py-2 overflow-x-auto no-scrollbar">
+            <div className="flex items-center gap-1 max-w-3xl mx-auto min-w-max">
+              {MONTHS.map(m => {
+                const isSelected = selectedMonth === m;
+                return (
+                  <button
+                    key={m}
+                    onClick={() => setSelectedMonth(m)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
+                      isSelected ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'
+                    }`}
+                  >
+                    {m}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* MAIN CONTENT AREA */}
+          <main className="max-w-3xl mx-auto px-4 py-4 space-y-5">
+            
+            {/* TAB 1: DASHBOARD */}
+            {activeTab === 'dashboard' && (
+              <div className="space-y-4">
+                
+                {/* Hero Month Card */}
+                <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 p-4 rounded-2xl border border-slate-700 shadow-xl">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">{selectedMonth} {selectedYear} Balance</span>
+                    <span className="text-[10px] text-slate-400">Fixed Income: {formatGBP(activeMonthSummary.salary)}</span>
+                  </div>
+                  <div className="flex items-baseline justify-between mt-1">
+                    <div>
+                      <p className="text-xs text-slate-400">Monthly Net Surplus</p>
+                      <p className={`text-2xl font-black font-mono ${activeMonthSummary.surplus >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {formatGBP(activeMonthSummary.surplus)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-slate-400">Planned Budget</p>
+                      <p className="text-sm font-bold font-mono text-slate-200">{formatGBP(activeMonthSummary.totalBudget)}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Trajectory Area Chart */}
+                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-sm">
+                  <h3 className="text-xs font-bold text-slate-300 mb-3 uppercase tracking-wider">12-Month Trajectory ({selectedYear})</h3>
+                  <div className="h-48 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={monthlySummaries} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
+                        <XAxis dataKey="month" stroke="#64748b" fontSize={10} tickLine={false} />
+                        <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
+                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderRadius: '8px', border: '1px solid #334155' }} formatter={(v) => formatGBP(v)} />
+                        <Area type="monotone" dataKey="salary" name="Salary" stroke="#10b981" fill="#10b981" fillOpacity={0.15} />
+                        <Area type="monotone" dataKey="totalActual" name="Actual Spent" stroke="#f43f5e" fill="#f43f5e" fillOpacity={0.2} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+              </div>
+            )}
+
+            {/* TAB 2: BUDGET TRACKER */}
+            {activeTab === 'tracker' && (
+              <div className="space-y-4">
+                
+                {/* Search & Action Toolbar */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex-1 relative">
+                    <input
+                      type="text"
+                      placeholder="Search expenses..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 text-xs text-white pl-3 pr-3 py-2 rounded-xl"
+                    />
+                  </div>
+
+                  <select
+                    value={payerFilter}
+                    onChange={(e) => setPayerFilter(e.target.value)}
+                    className="bg-slate-900 border border-slate-800 text-xs text-slate-300 py-2 px-2 rounded-xl"
+                  >
+                    <option value="All">All Payers</option>
+                    {AVAILABLE_PAYERS.filter(p => p !== 'All').map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+
+                  <button
+                    onClick={() => setIsAddExpenseOpen(true)}
+                    className="bg-emerald-600 text-white font-bold text-xs px-3 py-2 rounded-xl shadow-md shrink-0"
+                  >
+                    + Add
+                  </button>
+                </div>
+
+                {/* Expenses List */}
+                <div className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden divide-y divide-slate-800/80">
+                  {filteredExpenses.map((item) => (
+                    <div key={item.id} className="p-3.5 flex items-center justify-between gap-2">
+                      
+                      <div className="flex items-center gap-2.5">
+                        <button
+                          onClick={() => handleToggleStatus(item.id)}
+                          className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
+                            item.status === 'Paid' ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-400 border border-slate-700'
+                          }`}
+                        >
+                          {item.status === 'Paid' ? '✓' : '•'}
+                        </button>
+
+                        <div>
+                          <p className="text-xs font-bold text-white">{item.description}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">{item.category}</span>
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 font-semibold">{item.deductedFrom}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={item.actual}
+                          onChange={(e) => handleActualChange(item.id, e.target.value)}
+                          className="w-20 text-right bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-xs font-mono font-bold text-white"
+                        />
+                        <p className="text-[10px] text-slate-500 mt-0.5">Plan: {formatGBP(item.budget)}</p>
+                      </div>
+
+                    </div>
+                  ))}
+                </div>
+
+              </div>
+            )}
+
+            {/* TAB 3: DEBTS & SAVINGS POTS */}
+            {activeTab === 'pots' && (
+              <div className="space-y-5">
+                
+                {/* Savings Pots */}
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-400 mb-2">Savings Pots</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    {pots.map(p => (
+                      <div key={p.id} className="bg-slate-900 p-3 rounded-2xl border border-slate-800">
+                        <div className="flex justify-between items-center text-sm mb-1">
+                          <span>{p.icon}</span>
+                          <span className="text-xs font-mono text-emerald-400 font-bold">{Math.round((p.balance/p.target)*100)}%</span>
+                        </div>
+                        <p className="text-xs font-bold text-white leading-tight">{p.name}</p>
+                        <p className="text-sm font-black font-mono text-white mt-1">{formatGBP(p.balance)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Debts Table */}
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-rose-400 mb-2">Debts & Repayments Ledger</h3>
+                  <div className="bg-slate-900 rounded-2xl border border-slate-800 divide-y divide-slate-800/80">
+                    {debts.map(d => {
+                      const rem = Math.max(0, d.totalAmount - d.paidAmount);
+                      return (
+                        <div key={d.id} className="p-3 flex items-center justify-between">
+                          <div>
+                            <p className="text-xs font-bold text-white">{d.recipient}</p>
+                            <p className="text-[10px] text-slate-400">{d.comments}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className={`text-xs font-mono font-bold ${rem === 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              {rem === 0 ? 'Fully Paid' : formatGBP(rem)}
+                            </p>
+                            <p className="text-[10px] text-slate-500 font-mono">Total: {formatGBP(d.totalAmount)}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+              </div>
+            )}
+
+            {/* TAB 4: SETTINGS */}
+            {activeTab === 'settings' && (
+              <div className="space-y-4">
+                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-3">
+                  <h3 className="text-sm font-bold text-white">iPhone PWA Controls</h3>
+                  <p className="text-xs text-slate-400">All changes persist directly to your iPhone's local application storage.</p>
+                  
+                  <button
+                    onClick={handleExportCSV}
+                    className="w-full py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-bold"
+                  >
+                    Export Backup CSV
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      if(confirm("Reset all data back to notebook template defaults?")) {
+                        localStorage.removeItem('family_budget_pwa_data_v1');
+                        location.reload();
+                      }
+                    }}
+                    className="w-full py-2.5 bg-rose-950/60 text-rose-300 border border-rose-900 rounded-xl text-xs font-bold"
+                  >
+                    Reset Storage
+                  </button>
+                </div>
+              </div>
+            )}
+
+          </main>
+
+          {/* iOS Bottom Navigation Bar */}
+          <nav className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 py-2.5 px-4 z-40">
+            <div className="max-w-md mx-auto flex justify-around">
+              <button onClick={() => setActiveTab('dashboard')} className={`flex flex-col items-center gap-0.5 ${activeTab === 'dashboard' ? 'text-emerald-400 font-bold' : 'text-slate-500'}`}>
+                <span className="text-base">📊</span>
+                <span className="text-[10px]">Dashboard</span>
+              </button>
+
+              <button onClick={() => setActiveTab('tracker')} className={`flex flex-col items-center gap-0.5 ${activeTab === 'tracker' ? 'text-emerald-400 font-bold' : 'text-slate-500'}`}>
+                <span className="text-base">💳</span>
+                <span className="text-[10px]">Budget</span>
+              </button>
+
+              <button onClick={() => setActiveTab('pots')} className={`flex flex-col items-center gap-0.5 ${activeTab === 'pots' ? 'text-emerald-400 font-bold' : 'text-slate-500'}`}>
+                <span className="text-base">🏦</span>
+                <span className="text-[10px]">Pots & Debts</span>
+              </button>
+
+              <button onClick={() => setActiveTab('settings')} className={`flex flex-col items-center gap-0.5 ${activeTab === 'settings' ? 'text-emerald-400 font-bold' : 'text-slate-500'}`}>
+                <span className="text-base">⚙️</span>
+                <span className="text-[10px]">Settings</span>
+              </button>
+            </div>
+          </nav>
+
+          {/* ADD EXPENSE MODAL */}
+          {isAddExpenseOpen && (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+              <div className="bg-slate-900 border border-slate-800 w-full max-w-sm rounded-2xl p-4 space-y-3">
+                <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                  <h3 className="font-bold text-sm text-white">Add Expense ({selectedMonth})</h3>
+                  <button onClick={() => setIsAddExpenseOpen(false)} className="text-slate-400">✕</button>
+                </div>
+
+                <form onSubmit={handleAddExpense} className="space-y-3 text-xs">
+                  <div>
+                    <label className="block text-slate-400 font-bold mb-1">Description</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Internet / Rent"
+                      value={newExpense.description}
+                      onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 p-2 rounded-xl text-white"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-slate-400 font-bold mb-1">Budget (£)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        required
+                        value={newExpense.budget}
+                        onChange={(e) => setNewExpense({ ...newExpense, budget: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 p-2 rounded-xl text-white font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-400 font-bold mb-1">Payer</label>
+                      <select
+                        value={newExpense.deductedFrom}
+                        onChange={(e) => setNewExpense({ ...newExpense, deductedFrom: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 p-2 rounded-xl text-white"
+                      >
+                        {AVAILABLE_PAYERS.filter(p => p !== 'All').map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button type="button" onClick={() => setIsAddExpenseOpen(false)} className="px-3 py-1.5 bg-slate-800 text-slate-300 rounded-xl">Cancel</button>
+                    <button type="submit" className="px-4 py-1.5 bg-emerald-600 text-white font-bold rounded-xl">Save</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* ADD YEAR MODAL */}
+          {isAddYearOpen && (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+              <div className="bg-slate-900 border border-slate-800 w-full max-w-xs rounded-2xl p-4 space-y-3">
+                <h3 className="font-bold text-sm text-white">Add Year</h3>
+                <form onSubmit={handleAddYear} className="space-y-3 text-xs">
+                  <input
+                    type="number"
+                    placeholder="2029"
+                    required
+                    value={newYearInput}
+                    onChange={(e) => setNewYearInput(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 p-2 rounded-xl text-white font-mono text-base font-bold"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <button type="button" onClick={() => setIsAddYearOpen(false)} className="px-3 py-1.5 bg-slate-800 text-slate-300 rounded-xl">Cancel</button>
+                    <button type="submit" className="px-4 py-1.5 bg-emerald-600 text-white font-bold rounded-xl">Add</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    // Render App
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+
+    // Service Worker Registration for 100% Offline PWA Execution
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        const swCode = `
+          const CACHE_NAME = 'family-budget-pwa-v1';
+          self.addEventListener('install', (e) => {
+            e.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(['/'])));
+          });
+          self.addEventListener('fetch', (e) => {
+            e.respondWith(caches.match(e.request).then((res) => res || fetch(e.request)));
+          });
+        `;
+        const blob = new Blob([swCode], { type: 'application/javascript' });
+        navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
